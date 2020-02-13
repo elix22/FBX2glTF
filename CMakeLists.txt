@@ -1,37 +1,68 @@
 cmake_minimum_required(VERSION 3.5)
 project(FBX2glTF)
 
+set(typical_usage_str
+  "Example usage:\n\
+  > mkdir -p build_debug\n\
+  > conan install . -i build_debug -s build_type=Debug -e FBXSDK_SDKS=/home/zell/FBXSDK\n\
+  > conan build . -bf build_debug")
+
 if ("${CMAKE_CURRENT_SOURCE_DIR}" STREQUAL "${CMAKE_BINARY_DIR}")
   message(FATAL_ERROR
-    "Building from within the source tree is not supported.\n"
-    "Hint: mkdir -p build; cmake -H. -Bbuild; make -Cbuild\n")
+    "Building from within the source tree is not supported! ${typical_usage_str}")
 endif ()
 
 set(CMAKE_CXX_STANDARD 11)
-find_package(Threads REQUIRED)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}")
 include(ExternalProject)
 
 # FBX
-find_package(FBX REQUIRED)
+foreach (FBXSDK_VERSION "2019.2")
+  find_package(FBX)
+  if (FBXSDK_FOUND)
+    break()
+  endif()
+endforeach(FBXSDK_VERSION)
 if (NOT FBXSDK_FOUND)
   message(FATAL_ERROR
     "Can't find FBX SDK in either:\n"
     " - Mac OS X: ${FBXSDK_APPLE_ROOT}\n"
     " - Windows: ${FBXSDK_WINDOWS_ROOT}\n"
     " - Linux: ${FBXSDK_LINUX_ROOT}"
-)
+  )
 endif()
+
+if(NOT EXISTS "${CMAKE_BINARY_DIR}/conan_paths.cmake")
+  message(FATAL_ERROR
+    "The Conan package manager must run ('install') first. ${typical_usage_str}")
+endif()
+include("${CMAKE_BINARY_DIR}/conan_paths.cmake")
+
+set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
+find_package(Threads REQUIRED)
+
+list(INSERT CMAKE_MODULE_PATH 0 "${CMAKE_BINARY_DIR}")
+
+# stuff we get from Conan
+find_package(boost_filesystem MODULE REQUIRED)
+find_package(boost_optional MODULE REQUIRED)
+find_package(libxml2 MODULE REQUIRED)
+find_package(zlib MODULE REQUIRED)
+find_package(fmt MODULE REQUIRED)
+
+# create a compilation database for e.g. clang-tidy
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # DRACO
 ExternalProject_Add(Draco
   GIT_REPOSITORY https://github.com/google/draco
-  GIT_TAG 1.2.5
+  GIT_TAG 1.3.4
   PREFIX draco
   INSTALL_DIR
   CMAKE_ARGS
-	-DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+        -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+        -DBUILD_FOR_GLTF=1
 )
 set(DRACO_INCLUDE_DIR "${CMAKE_BINARY_DIR}/draco/include")
 if (WIN32)
@@ -65,26 +96,6 @@ ExternalProject_Add(FiFoMap
 )
 set(FIFO_MAP_INCLUDE_DIR "${CMAKE_BINARY_DIR}/fifo_map/src/FiFoMap/src")
 
-# JSON
-ExternalProject_Add(Json
-  PREFIX json
-  GIT_REPOSITORY https://github.com/nlohmann/json
-  GIT_TAG v2.1.1
-  CONFIGURE_COMMAND ${CMAKE_COMMAND} -E echo "Skipping JSON configure step."
-  BUILD_COMMAND ${CMAKE_COMMAND} -E echo "Skipping JSON build step."
-  INSTALL_COMMAND ${CMAKE_COMMAND} -E echo "Skipping JSON install step."
-)
-set(JSON_INCLUDE_DIR "${CMAKE_BINARY_DIR}/json/src/Json/src")
-
-# stb
-ExternalProject_Add(STB
-  PREFIX stb
-  GIT_REPOSITORY https://github.com/nothings/stb
-  CONFIGURE_COMMAND ${CMAKE_COMMAND} -E echo "Skipping STB configure step."
-  BUILD_COMMAND ${CMAKE_COMMAND} -E echo "Skipping STB build step."
-  INSTALL_COMMAND ${CMAKE_COMMAND} -E echo "Skipping STB install step."
-)
-set(STB_INCLUDE_DIR "${CMAKE_BINARY_DIR}/stb/src/STB")
 
 # cppcodec
 ExternalProject_Add(CPPCodec
@@ -96,126 +107,140 @@ ExternalProject_Add(CPPCodec
 )
 set(CPPCODEC_INCLUDE_DIR "${CMAKE_BINARY_DIR}/cppcodec/src/CPPCodec")
 
-# CXXOPTS
-ExternalProject_Add(CxxOpts
-  GIT_REPOSITORY https://github.com/jarro2783/cxxopts
-  GIT_TAG v1.4.4
-  PREFIX cxxopts
-  CONFIGURE_COMMAND ${CMAKE_COMMAND} -E echo "Skipping cxxopts configure step."
-  BUILD_COMMAND ${CMAKE_COMMAND} -E echo "Skipping cxxopts build step."
-  INSTALL_COMMAND ${CMAKE_COMMAND} -E echo "Skipping cxxopts install step."
-)
-set(CXXOPTS_INCLUDE_DIR "${CMAKE_BINARY_DIR}/cxxopts/src/CxxOpts/include")
-
-# FMT
-ExternalProject_Add(Fmt
-  PREFIX fmt
-  GIT_REPOSITORY https://github.com/fmtlib/fmt
-  GIT_TAG 4.0.0
-  CMAKE_CACHE_ARGS  "-DFMT_DOC:BOOL=OFF" "-DFMT_INSTALL:BOOL=ON" "-DFMT_TEST:BOOL=OFF"
-  CMAKE_ARGS
-	-DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
-)
-set(FMT_INCLUDE_DIR "${CMAKE_BINARY_DIR}/fmt/include")
-if (WIN32)
-   set(FMT_LIB "${CMAKE_BINARY_DIR}/fmt/lib/fmt.lib")
-else()
-   set(FMT_LIB "${CMAKE_BINARY_DIR}/fmt/lib/libfmt.a")
-endif()
-
 if (APPLE)
     find_library(CF_FRAMEWORK CoreFoundation)
     message("CoreFoundation Framework: ${CF_FRAMEWORK}")
     set(FRAMEWORKS ${CF_FRAMEWORK})
 endif()
 
-set(SOURCE_FILES
+set(LIB_SOURCE_FILES
         src/FBX2glTF.h
-        src/Fbx2Raw.cpp
-        src/Fbx2Raw.h
-        src/Raw2Gltf.cpp
-        src/Raw2Gltf.h
-        src/RawModel.cpp
-        src/RawModel.h
-        src/glTF/AccessorData.cpp
-        src/glTF/AccessorData.h
-        src/glTF/AnimationData.cpp
-        src/glTF/AnimationData.h
-        src/glTF/BufferData.cpp
-        src/glTF/BufferData.h
-        src/glTF/BufferViewData.cpp
-        src/glTF/BufferViewData.h
-        src/glTF/CameraData.cpp
-        src/glTF/CameraData.h
-        src/glTF/ImageData.cpp
-        src/glTF/ImageData.h
-        src/glTF/MaterialData.cpp
-        src/glTF/MaterialData.h
-        src/glTF/MeshData.cpp
-        src/glTF/MeshData.h
-        src/glTF/NodeData.cpp
-        src/glTF/NodeData.h
-        src/glTF/PrimitiveData.cpp
-        src/glTF/PrimitiveData.h
-        src/glTF/SamplerData.h
-        src/glTF/SceneData.cpp
-        src/glTF/SceneData.h
-        src/glTF/SkinData.cpp
-        src/glTF/SkinData.h
-        src/glTF/TextureData.cpp
-        src/glTF/TextureData.h
-        src/main.cpp
-        src/mathfu.h
+        src/fbx/materials/3dsMaxPhysicalMaterial.cpp
+        src/fbx/materials/FbxMaterials.cpp
+        src/fbx/materials/FbxMaterials.hpp
+        src/fbx/materials/RoughnessMetallicMaterials.hpp
+        src/fbx/materials/StingrayPBSMaterial.cpp
+        src/fbx/materials/TraditionalMaterials.cpp
+        src/fbx/materials/TraditionalMaterials.hpp
+        src/fbx/Fbx2Raw.cpp
+        src/fbx/Fbx2Raw.hpp
+        src/fbx/FbxBlendShapesAccess.cpp
+        src/fbx/FbxBlendShapesAccess.hpp
+        src/fbx/FbxLayerElementAccess.hpp
+        src/fbx/FbxSkinningAccess.cpp
+        src/fbx/FbxSkinningAccess.hpp
+        src/gltf/Raw2Gltf.cpp
+        src/gltf/Raw2Gltf.hpp
+        src/gltf/GltfModel.cpp
+        src/gltf/GltfModel.hpp
+        src/gltf/TextureBuilder.cpp
+        src/gltf/TextureBuilder.hpp
+        src/gltf/properties/AccessorData.cpp
+        src/gltf/properties/AccessorData.hpp
+        src/gltf/properties/AnimationData.cpp
+        src/gltf/properties/AnimationData.hpp
+        src/gltf/properties/BufferData.cpp
+        src/gltf/properties/BufferData.hpp
+        src/gltf/properties/BufferViewData.cpp
+        src/gltf/properties/BufferViewData.hpp
+        src/gltf/properties/CameraData.cpp
+        src/gltf/properties/CameraData.hpp
+        src/gltf/properties/ImageData.cpp
+        src/gltf/properties/ImageData.hpp
+        src/gltf/properties/LightData.cpp
+        src/gltf/properties/LightData.hpp
+        src/gltf/properties/MaterialData.cpp
+        src/gltf/properties/MaterialData.hpp
+        src/gltf/properties/MeshData.cpp
+        src/gltf/properties/MeshData.hpp
+        src/gltf/properties/NodeData.cpp
+        src/gltf/properties/NodeData.hpp
+        src/gltf/properties/PrimitiveData.cpp
+        src/gltf/properties/PrimitiveData.hpp
+        src/gltf/properties/SamplerData.hpp
+        src/gltf/properties/SceneData.cpp
+        src/gltf/properties/SceneData.hpp
+        src/gltf/properties/SkinData.cpp
+        src/gltf/properties/SkinData.hpp
+        src/gltf/properties/TextureData.cpp
+        src/gltf/properties/TextureData.hpp
+        src/mathfu.hpp
+        src/raw/RawModel.cpp
+        src/raw/RawModel.hpp
         src/utils/File_Utils.cpp
-        src/utils/File_Utils.h
+        src/utils/File_Utils.hpp
         src/utils/Image_Utils.cpp
-        src/utils/Image_Utils.h
-        src/utils/String_Utils.cpp
-        src/utils/String_Utils.h
+        src/utils/Image_Utils.hpp
+        src/utils/String_Utils.hpp
+        third_party/CLI11/CLI11.hpp
 )
 
-add_executable(FBX2glTF ${SOURCE_FILES})
+add_library(libFBX2glTF STATIC ${LIB_SOURCE_FILES})
+set_target_properties(libFBX2glTF PROPERTIES OUTPUT_NAME "FBX2glTF")
+add_executable(appFBX2glTF src/FBX2glTF.cpp)
+set_target_properties(appFBX2glTF PROPERTIES OUTPUT_NAME "FBX2glTF")
 
-add_dependencies(FBX2glTF
+add_dependencies(libFBX2glTF
   Draco
   MathFu
   FiFoMap
-  Json
-  STB
-  CxxOpts
   CPPCodec
-  Fmt
 )
 
 if (NOT MSVC)
   # Disable annoying & spammy warning from FBX SDK header file
-  target_compile_options(FBX2glTF PRIVATE
+  target_compile_options(libFBX2glTF PRIVATE
+    "-Wno-null-dereference"
+    "-Wunused"
+    )
+  target_compile_options(appFBX2glTF PRIVATE
     "-Wno-null-dereference"
     "-Wunused"
     )
 endif()
 
-target_link_libraries(FBX2glTF
+target_link_libraries(libFBX2glTF
   ${FRAMEWORKS}
-  ${CMAKE_DL_LIBS}
-  ${CMAKE_THREAD_LIBS_INIT}
+  boost_filesystem::boost_filesystem
+  boost_optional::boost_optional
   ${DRACO_LIB}
-  ${FMT_LIB}
   optimized ${FBXSDK_LIBRARY}
   debug ${FBXSDK_LIBRARY_DEBUG}
+  fmt::fmt
+  libxml2::libxml2
+  zlib::zlib
+  ${CMAKE_DL_LIBS}
+  ${CMAKE_THREAD_LIBS_INIT}
 )
 
-target_include_directories(FBX2glTF PUBLIC
+if (APPLE)
+ find_package(Iconv MODULE REQUIRED)
+ target_link_libraries(libFBX2glTF Iconv)
+else()
+ find_package(libiconv MODULE REQUIRED)
+ target_link_libraries(libFBX2glTF libiconv::libiconv)
+endif()
+
+target_include_directories(libFBX2glTF PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_include_directories(libFBX2glTF SYSTEM PUBLIC
+  "third_party/stb"
+  "third_party/json"
   ${FBXSDK_INCLUDE_DIR}
   ${DRACO_INCLUDE_DIR}
   ${MATHFU_INCLUDE_DIRS}
   ${FIFO_MAP_INCLUDE_DIR}
-  ${JSON_INCLUDE_DIR}
-  ${CXXOPTS_INCLUDE_DIR}
-  ${STB_INCLUDE_DIR}
   ${CPPCODEC_INCLUDE_DIR}
-  ${FMT_INCLUDE_DIR}
 )
 
-install (TARGETS FBX2glTF DESTINATION bin)
+target_include_directories(appFBX2glTF PUBLIC
+  "third_party/CLI11"
+)
+target_link_libraries(appFBX2glTF libFBX2glTF)
+
+install (TARGETS libFBX2glTF appFBX2glTF
+        RUNTIME DESTINATION bin
+        ARCHIVE DESTINATION lib
+)

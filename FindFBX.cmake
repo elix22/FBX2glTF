@@ -1,3 +1,5 @@
+# Copyright (c) 2014-present, Facebook, Inc.
+# All rights reserved.
 #
 # Helper function for finding the FBX SDK.
 # Cribbed & tweaked from https://github.com/floooh/fbxc/
@@ -21,26 +23,23 @@ else()
   set(ARCH_32 OFF)
 endif()
 
-set(FBXSDK_VERSION "2018.1.1" CACHE STRING "Precise version string of FBX SDK to use.")
+if (NOT DEFINED FBXSDK_VERSION)
+  set(FBXSDK_VERSION "2019.2")
+endif()
 
-set(_fbxsdk_vstudio_version "vs2015")
+set(_fbxsdk_vstudio_version "vs2017")
 
 message("Looking for FBX SDK version: ${FBXSDK_VERSION}")
 
-if (DEFINED FBXSDK_SDKS)
-  get_filename_component(FBXSDK_SDKS_ABS ${FBXSDK_SDKS} ABSOLUTE)
-
-  set(FBXSDK_APPLE_ROOT   "${FBXSDK_SDKS_ABS}/Darwin/${FBXSDK_VERSION}")
-  set(FBXSDK_LINUX_ROOT   "${FBXSDK_SDKS_ABS}/Linux/${FBXSDK_VERSION}")
-  set(FBXSDK_WINDOWS_ROOT "${FBXSDK_SDKS_ABS}/Windows/${FBXSDK_VERSION}")
-else()
-  set(FBXSDK_APPLE_ROOT
-    "/Applications/Autodesk/FBX SDK/${FBXSDK_VERSION}")
-  set(FBXSDK_LINUX_ROOT
-    "/usr")
-  set(FBXSDK_WINDOWS_ROOT
-    "C:/Program Files/Autodesk/FBX/FBX SDK/${FBXSDK_VERSION}")
+if (NOT DEFINED FBXSDK_SDKS)
+   set(FBXSDK_SDKS "${CMAKE_CURRENT_SOURCE_DIR}/sdk")
 endif()
+
+get_filename_component(FBXSDK_SDKS_ABS ${FBXSDK_SDKS} ABSOLUTE)
+
+set(FBXSDK_APPLE_ROOT   "${FBXSDK_SDKS_ABS}/Darwin/${FBXSDK_VERSION}")
+set(FBXSDK_LINUX_ROOT   "${FBXSDK_SDKS_ABS}/Linux/${FBXSDK_VERSION}")
+set(FBXSDK_WINDOWS_ROOT "${FBXSDK_SDKS_ABS}/Windows/${FBXSDK_VERSION}")
 
 if (APPLE)
   set(_fbxsdk_root "${FBXSDK_APPLE_ROOT}")
@@ -62,11 +61,11 @@ elseif (WIN32)
 elseif (UNIX)
   set(_fbxsdk_root "${FBXSDK_LINUX_ROOT}")
   if (ARCH_32)
-    set(_fbxsdk_libdir_debug "lib/gcc4/x86/debug")
-    set(_fbxsdk_libdir_release "lib/gcc4/x86/release")
+    set(_fbxsdk_libdir_debug "lib/gcc/x86/debug")
+    set(_fbxsdk_libdir_release "lib/gcc/x86/release")
   else()
-    set(_fbxsdk_libdir_debug "lib/gcc4/x64/debug")
-    set(_fbxsdk_libdir_release "lib/gcc4/x64/release")
+    set(_fbxsdk_libdir_debug "lib/gcc/x64/debug")
+    set(_fbxsdk_libdir_release "lib/gcc/x64/release")
   endif()
   set(_fbxsdk_libname_debug "libfbxsdk.a")
   set(_fbxsdk_libname_release "libfbxsdk.a")
